@@ -1,6 +1,4 @@
-import os
-import cv2
-from regutils import simpleelastix_utils_mod_x as sutl
+from regutils import simpleelastix_utils as sutl
 import SimpleITK as sitk
 import numpy as np
 import matplotlib as mpl
@@ -12,9 +10,6 @@ from natsort import natsorted
 import glob
 import re
 import pandas
-import xlrd
-
-
 
 def softpred_to_rgb(imgin,ncct_rgb,cropmask=None,rc=None):
     # MAKE SOFT PRED INTO RGB COLOR MAP WITH JET SCALE
@@ -62,58 +57,48 @@ def make_colorbar():
 #CREATE SEPERATE COLORBAR IMG FOR REFERENCE
 blended_rgb = make_colorbar()
 
-def img_rescale_0_1(matin_img, range= None):
-    matin = sitk.GetArrayFromImage(matin_img)
-    # mat_xyz = reorder_yxz(matin).copy()
-    if range:
-        mat_xyz = imageutils.imrescale(matin, range, [0, 1])
-    else:
-        mat_xyz = imageutils.imrescale(matin, [], [0, 1])
-
-    return mat_xyz
-
-def montage_loop(path_GT,path_NCCT,path_Abdel, path_montages_0, path_df=None):
-    # dataframe
-    if not path_df is None:
-        df = pandas.read_excel(path_df, sheet_name='summary_0-4', index_col='reference', engine='openpyxl')
-        vol_reference = df['volume reference'].tolist()
-        vol_rater2 = df['volume test rater 2'].tolist()
-
+def montage_loop(path_list ,path_NCCT, path_montages_0, path_df=None):
 
     # for glob.glob lists
-    GT_ = natsorted(glob.glob(str(path_GT+ '/*.nii.gz')))
-    Abdel_ = natsorted(glob.glob(str(path_Abdel + '/*.nii.gz')))
-    NCCT_ = natsorted(glob.glob(str(path_NCCT+ '/*.nii.gz')))
+    path_1 = natsorted(glob.glob(str(path_list[0]+ '/*.nii.gz')))
+    path_2 = natsorted(glob.glob(str(path_list[1] + '/*.nii.gz')))
+    path_3 = natsorted(glob.glob(str(path_list[2] + '/*.nii.gz')))
+    NCCT_ = natsorted(glob.glob(str(path_NCCT + '/*.nii.gz')))
     count = 0
 
-    assert len(GT_) == len(NCCT_) == len(vol_reference) == len(vol_rater2), 'different list lengths'
-    for i, f, a, di, se in zip(GT_, NCCT_, Abdel_, vol_reference, vol_rater2):
-        # if di < 1.0:
+    # dataframe
+    text = None
+    if not path_df is None:
+        df = pandas.read_excel(path_df, sheet_name='summary_0-4', index_col='reference', engine='openpyxl')
+        vol_path_1 = df['volume reference'].tolist()
+        vol_path_2 = df['volume test rater 2'].tolist()
+        vol_path_3 = df['volume test rater 3'].tolist()
+        text = 'B_' + str(round(vol_path_1, 2)) + 'A_' + str(round(vol_path_2, 2)) + 'J_' + str(round(vol_path_3, 2))
+        # assert len(NCCT_) == len(Ben_) == len(Abdel_) == len(Jeremy_) == len(vol_Ben) == len(vol_Abdel) == len(vol_Jeremy), 'different list lengths'
+    else:
+        assert len(path_1) == len(path_2) == len(path_3) == len(NCCT_), 'different list lengths'
+
+    for n, one, two, three in zip(NCCT_, path_1, path_2, path_3):
         count += 1
-        encoded_id = i.split('/')[-1]
+        encoded_id = n.split('/')[-1]
         encoded_num = re.findall('([0-9]+)', encoded_id)[0]
-        NCCT = sitk.ReadImage(f)
-        GT = sitk.ReadImage(i)
-        Abdel = sitk.ReadImage(a)
-
-        text = 'R1_' + str(round(di, 2)) + 'R2_' + str(round(se, 2))
-
-        # GT = sitk.ReadImage("NCCT_001_gt.nii.gz")
-        # NCCT = sitk.ReadImage("NCCT_001_0000_NCCT.nii.gz")
-        # softpred = np.load("NCCT_001_softmax.npz")['softmax']
+        NCCT = sitk.ReadImage(n)
+        expert_1 = sitk.ReadImage(one)
+        expert_2 = sitk.ReadImage(two)
+        expert_3 = sitk.ReadImage(three)
+        # sitk.WriteImage(Heatmap,'/Volumes/T7/NCCT_project_ncctROI/0_interrater_analysis/montages/heatmap.nii')
 
         # CREATE RGB MAGES - MONTAGE STYLE
         if 1:
             ncct_rgb = sutl.sitk2montage(NCCT, str(encoded_num + '_NCCT.png'), range=[0, 60])
-            GT_rgb = sutl.sitk2montage(NCCT, str(encoded_num + '_GT.png'), range=[0, 60], maskovl=GT)
-            Abdel_rgb = sutl.sitk2montage(NCCT, str(encoded_num + '_Abdel.png'), range=[0, 60], maskovl=Abdel, mask_mix=[255,255,0])
+            expert_1_rgb = sutl.sitk2montage(NCCT, str(encoded_num + '_expert_1.png'), range=[0, 60], maskovl=[expert_1])
+            expert_2_rgb = sutl.sitk2montage(NCCT, str(encoded_num + '_expert_2.png'), range=[0, 60], maskovl=[expert_2], mask_mix=[255,255,0])
+            expert_3_rgb = sutl.sitk2montage(NCCT, str(encoded_num + '_expert_3.png'), range=[0, 60], maskovl=[expert_3], mask_mix=[255,0,0])
 
-        # metrics for image
 
         # NOW LETS MAKE THE MORE SOFISTICATED ROW DEPICTION
         # lets just show slices with either pred:20% or a GT lesion
-        pred_of_interest = sitk.GetArrayFromImage(GT)
-        slices_no_interest = np.argwhere(np.sum(pred_of_interest, axis=(1, 2)) == 0)
+        slices_no_interest = np.argwhere(np.sum(sum_array, axis=(1, 2)) == 0)
         NCCTmask = sitk.GetArrayFromImage(NCCT) > 100
         for k in slices_no_interest:
             NCCTmask[k[0]] = 0
@@ -123,29 +108,33 @@ def montage_loop(path_GT,path_NCCT,path_Abdel, path_montages_0, path_df=None):
         if valid_slices_count > 0:
             A = sutl.sitk2montage(NCCT, str(encoded_num + '_ROW_NCCT.png'), range=[0, 60], cropmask=NCCTmask,
                                   rc=[1, valid_slices_count])
-            B = sutl.sitk2montage(NCCT, str(encoded_num + '_ROW_GT.png'), range=[0, 60], maskovl=GT,
+            B = sutl.sitk2montage(NCCT, str(encoded_num + '_ROW_expert_1.png'), range=[0, 60], maskovl=expert_1, mask_mix=[0, 218, 0],
                                   cropmask=NCCTmask, rc=[1, valid_slices_count])
-            C = sutl.sitk2montage(NCCT, str(encoded_num + '_ROW_Abdel.png'), range=[0, 60], maskovl=Abdel, mask_mix=[0,255,255],
+            C = sutl.sitk2montage(NCCT, str(encoded_num + '_ROW_expert_2.png'), range=[0, 60], maskovl=expert_2, mask_mix=[255, 105, 224],
+                                  cropmask=NCCTmask, rc=[1, valid_slices_count])
+            D = sutl.sitk2montage(NCCT, str(encoded_num + '_ROW_expert_3.png'), range=[0, 60], maskovl=expert_3, mask_mix=[255,100,0],
                                   cropmask=NCCTmask, rc=[1, valid_slices_count])
 
-            # dice_score = dice(test=None, reference=GT, confusion_matrix=None, nan_for_nonexisting=True)
-            # sensitivity_ = sensitivity(test=None, reference=GT, confusion_matrix=None, nan_for_nonexisting=True)
-            # TP_ = TP(test=None, reference=GT, confusion_matrix=None, nan_for_nonexisting=True)
 
-            vcat = np.concatenate((A, B, C), axis=0)
+            vcat = np.concatenate((A, B, C, D), axis=0)
             # original: vcat = np.concatenate( (A,B,C,(blended_rgb*255).astype(np.uint8)),axis=0)
             # path_montage_3 = path_montages_3 + '/' + encoded_num + '_montage_' + text + '.png'
             # imageio.imwrite(path_montage_3,vcat)
-            path_montage_0 = path_montages_0 + '/' + encoded_num + '_montage_' + text + '.png'
+            if text is not None:
+                path_montage_0 = path_montages_0 + '/' + encoded_num + '_montage_' + text + '.png'
+            else:
+                path_montage_0 = path_montages_0 + '/' + encoded_num + '_montage.png'
             imageio.imwrite(path_montage_0, vcat)
+
 
 if __name__=="__main__":
     # READ IMAGES # path to directories
-    path_GT = '/Volumes/T7/interrater_analysis/GT'
-    path_Abdel = '/Volumes/T7/interrater_analysis/Abdel'
-    path_NCCT = '/Volumes/T7/interrater_analysis/NCCT'
-    path_montages_0 = '/Volumes/T7/interrater_analysis/montages'
+    path_Ben = '/Users/sophieostmeier/Desktop/Publications/NCCT_paper_DL/Data/labelsTr_Ben_200'
+    path_Jeremy = '/Users/sophieostmeier/Desktop/Publications/NCCT_paper_DL/Data/labelsTr_Jeremy_200'
+    path_pred = '/Users/sophieostmeier/Desktop/Publications/NCCT_paper_DL/Data/best_conf_mirror_227'
+    path_NCCT = '/Users/sophieostmeier/Desktop/Publications/NCCT_paper_DL/Data/imagesTr'
+    path_montages = '/Volumes/T7/NCCT_project_ncctROI/0_interrater_analysis/montages'
 
-    path_df = '/Users/sophieostmeier/OneDrive - Stanford/NCCT_ROUND3_TABLES/3D_summary_combined_Round_3.xlsx'
+    path_df = None
 
-    montage_loop(path_GT, path_NCCT, path_Abdel, path_montages_0,path_df=path_df)
+    montage_loop([path_Ben, path_Jeremy, path_pred], path_NCCT, path_montages)
